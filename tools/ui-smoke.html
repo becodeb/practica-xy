@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>UI smoke — El Operador de Grúa</title>
+<style>
+  body { font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; margin: 0; background: #111; color: #eee; }
+  #wrap { display: grid; grid-template-columns: 1fr 480px; height: 100vh; }
+  iframe { width: 100%; height: 100%; border: 0; background: #000; }
+  pre { margin: 0; padding: 12px; overflow: auto; }
+  .ok { color: #56d68a; }
+  .bad { color: #ff6b6b; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <iframe id="app" src="../index.html"></iframe>
+  <pre id="out">arrancando…</pre>
+</div>
+
+<script>
+/* Run with:
+ *   chromium --headless --no-sandbox --disable-gpu --allow-file-access-from-files \
+ *     --virtual-time-budget=90000 --dump-dom "file://$PWD/tools/ui-smoke.html"
+ *
+ * The iframe is the real app, untouched. Every step re-queries the DOM because
+ * the app re-renders whole sections; a saved reference goes detached and its
+ * .click() silently stops bubbling, which looks exactly like an app bug.
+ *
+ * The waits are generous on purpose: a run now pauses while Tito walks in or
+ * out (WALK_MS + 350) and moves take 160 ms per step, so a two-block level
+ * with two stops is a few seconds long.
+ */
+var out = document.getElementById('out');
+var lines = [];
+var failures = 0;
+
+function log(s) { lines.push(s); out.textContent = lines.join('\n'); }
+function ok(name) { log('  ok   ' + name); }
+function bad(name, detail) { failures++; log('  FALLA ' + name + (detail ? ' -> ' + detail : '')); }
+function is(name, actual, expected) {
+  if (actual === expected) ok(name);
+  else bad(name, 'esperaba ' + JSON.stringify(expected) + ' y vino ' + JSON.stringify(actual));
+}
+function truthy(name, v, detail) { if (v) ok(name); else bad(name, detail); }
+
+function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+var frame = document.getElementById('app');
+var W, D;
+
+function q(sel) { return D.querySelector(sel); }
+function all(sel) { return Array.prototype.slice.call(D.querySelectorAll(sel)); }
+function click(sel) {
+  var el = q(sel);
+  if (!el) { bad('click ' + sel, 'no existe el elemento'); return false; }
+  el.click();
+  return true;
+}
+function closeOverlay() {
+  if (!q('#overlay').hidden) click('#overlay [data-close]');
+}
+/* Typing into the block, the way a child does. The Event has to be built in
+ * the iframe's own realm or the app's listener never sees it. */
+function setNum(i, value) {
+  var f = q('#program .num[data-i="' + i + '"]');
+  if (!f) { bad('setNum ' + i, 'no existe el campo'); return; }
+  f.value = String(value);
+  f.dispatchEvent(new W.Event('input', { bubbles: true }));
+}
+function numOf(i) {
+  var f = q('#program .num[data-i="' + i + '"]');
+  return f ? f.value : null;
+}
+function readout() { return q('#readout').textContent.replace(/\s/g, ''); }
+function lastState() { return W.App.state.result.trace.slice(-1)[0].state; }
+function fresh() {
+  W.localStorage.clear();
+}
+
+frame.addEventListener('load', function () {
+  W = frame.contentWindow;
+  D = frame.contentDocument;
+  run().then(function () {
+    log('');
+    log(failures ? failures + ' problema(s).' : 'TODO OK');
+    out.className = failures ? 'bad' : 'ok';
+    document.title = failures ? 'SMOKE FAIL' : 'SMOKE OK';
+  }).catch(function (e) {
+    bad('excepción', e && e.message);
+    log('');
+    log('1 problema(s).');
+    document.title = 'SMOKE FAIL';
+  });
+});
+
+async function run() {
+  fresh();
+
+  log('# arranque');
+  truthy('la app expone App', !!W.App, 'window.App no está');
+  truthy('la app expone Engine', !!W.Engine, 'window.Engine no está');
+  is('arranca en el primer nivel', W.App.state.level.id, 't1');
+  truthy('se dibujó el tablero', all('#board .cell').length === 11, 'celdas: ' + all('#board .cell').length);
+  is('hay una parada', all('#board .stop').length, 1);
+  truthy('la parada está iluminada', !!q('#board .stop.is-next'), 'ninguna parada tiene is-next');
+  truthy('Tito está en el tablero', !!q('#board #worker.worker'), 'no hay #worker');
+  truthy('Tito arranca arriba de la plataforma', q('#worker').classList.contains('is-aboard'), 'no tiene is-aboard');
+  truthy('hay un cajón donde se baja', all('#board .crate').length === 1, 'cajones: ' + all('#board .crate').length);
+  truthy('hay un cartel de salida', all('#board .exit-sign').length === 1, 'carteles: ' + all('#board .exit-sign').length);
+  truthy('la grúa está colgada', !!q('#rig .trolley') && !!q('#rig .spreader') && all('#rig .cable').length === 2, 'falta el carro, la plataforma o los cables');
+  truthy('no hay regla de y en el riel', q('#ruler-y').hidden, 'la regla de y quedó visible');
+  is('la regla de x tiene 11 números', all('#ruler-x span').length, 11);
+
+  log('# la ficha de la fase se muestra una sola vez');
+  truthy('aparece la intro de la fase', !q('#overlay').hidden, 'el overlay está oculto');
+  truthy('la intro habla del carro', /carro/i.test(q('#overlay').textContent), q('#overlay').textContent.slice(0, 60));
+  closeOverlay();
+  truthy('se cierra la intro', q('#overlay').hidden, 'sigue abierto');
+
+  log('# un solo bloque por eje, con el número libre');
+  is('la paleta tiene un solo bloque', all('#palette .pal').length, 1);
+  is('el bloque de la paleta no dice ningún número',
+    q('#palette .code').textContent.replace(/\s+/g, ' ').trim(), 'cambiar x en');
+  truthy('la paleta tiene la ranura vacía de Scratch', !!q('#palette .slot'), 'no hay .slot');
+  truthy('no hay flechas en la paleta', all('#palette .pal svg').length === 0,
+    'svgs: ' + all('#palette .pal svg').length);
+
+  click('[data-pal="0"]');
+  is('se agregó un bloque', all('#program .blk').length, 1);
+  truthy('no hay flechas en el bloque', all('#program .blk svg').length === 0,
+    'svgs: ' + all('#program .blk svg').length);
+  is('el bloque nace en 1, no con la respuesta', numOf(0), '1');
+  is('el texto del bloque es el de Scratch',
+    q('#program .code').textContent.replace(/\s+/g, ' ').trim(), 'cambiar x en');
+
+  setNum(0, 3);
+  is('escribir 3 se guarda en el programa', W.App.state.program[0].amount, 3);
+  click('#btn-play');
+  truthy('el botón dice pausa mientras corre', /pausa/i.test(q('#btn-play').textContent), q('#btn-play').textContent);
+  await wait(6000);
+  truthy('gana con un solo bloque', !q('#overlay').hidden && /lo lograste/i.test(q('#overlay').textContent),
+    'overlay: ' + (q('#overlay').hidden ? 'oculto' : q('#overlay').textContent.slice(0, 60)));
+  is('se llevó 3 estrellas', all('#overlay .stars i.on').length, 3);
+  closeOverlay();
+  is('el readout muestra x=3', readout(), 'x=3');
+  is('la parada quedó hecha', all('#board .stop.is-done').length, 1);
+  truthy('Tito se bajó de la plataforma', !q('#worker').classList.contains('is-aboard'), 'sigue is-aboard');
+  truthy('el botón volvió a jugar', /jugar/i.test(q('#btn-play').textContent), q('#btn-play').textContent);
+
+  log('# el número negativo');
+  W.App.loadLevel(1, true);
+  await wait(100);
+  click('[data-pal="0"]');
+  setNum(0, -4);
+  is('acepta el menos', W.App.state.program[0].amount, -4);
+  click('#btn-play');
+  await wait(7000);
+  truthy('llega al -4', /lo lograste/i.test(q('#overlay').textContent), 'no ganó');
+  closeOverlay();
+  truthy('Tito mira a la izquierda', q('#worker').classList.contains('is-left'), 'no tiene is-left');
+
+  log('# escribir un número de más se sale del riel');
+  W.App.loadLevel(0, true);
+  await wait(100);
+  click('[data-pal="0"]');
+  setNum(0, 9);
+  click('#btn-play');
+  await wait(1500);
+  truthy('avisa que se pasó', !q('#toast').hidden, 'no salió el aviso');
+  truthy('el aviso habla del riel', /riel/i.test(q('#toast').textContent), q('#toast').textContent);
+  truthy('el bloque culpable queda marcado', all('#program .blk.is-bad').length === 1,
+    'marcados: ' + all('#program .blk.is-bad').length);
+  is('el carro no se fue del tablero', lastState().x, 0);
+
+  log('# los botones menos y más cruzan el cero');
+  W.App.loadLevel(0, true);
+  await wait(100);
+  click('[data-pal="0"]');
+  click('#program .blk[data-i="0"] [data-dial="-1"]');
+  is('de 1 baja a 0', numOf(0), '0');
+  click('#program .blk[data-i="0"] [data-dial="-1"]');
+  is('de 0 sigue al -1', numOf(0), '-1');
+  is('y el programa lo sabe', W.App.state.program[0].amount, -1);
+  click('#program .blk[data-i="0"] [data-dial="1"]');
+  click('#program .blk[data-i="0"] [data-dial="1"]');
+  is('y vuelve para arriba', numOf(0), '1');
+
+  log('# un campo a medio escribir no rompe nada');
+  setNum(0, '-');
+  is('un menos solo corre como 0', W.App.state.program[0].amount, 0);
+  is('pero no le pisa lo que está tecleando', numOf(0), '-');
+  q('#program .num[data-i="0"]').dispatchEvent(new W.Event('focusout', { bubbles: true }));
+  is('al salir del campo muestra lo que realmente corrió', numOf(0), '0');
+
+  log('# un pasito, y las paradas van en orden');
+  W.App.loadLevel(3, true);
+  await wait(100);
+  is('el nivel es t4', W.App.state.level.id, 't4');
+  is('hay dos paradas', all('#board .stop').length, 2);
+  is('solo la primera está iluminada', q('#board .stop.is-next').dataset.i, '0');
+  is('la segunda espera apagada', q('#board .stop.is-later').dataset.i, '1');
+  truthy('Tito espera parado en su cajón', !q('#worker').classList.contains('is-aboard'), 'arrancó is-aboard');
+  click('[data-pal="0"]'); click('[data-pal="0"]');
+  setNum(0, 3); setNum(1, 3);
+  click('#btn-step');
+  await wait(200);
+  is('un pasito es un evento, no un bloque', readout(), 'x=1');
+  click('#btn-step'); await wait(200);
+  is('el segundo evento es subir a Tito', W.App.state.result.trace[W.App.state.cursor].kind, 'pick');
+  truthy('Tito se subió', q('#worker').classList.contains('is-aboard'), 'no tiene is-aboard');
+  truthy('Tito camina al subir', q('#worker').classList.contains('is-walking'), 'no tiene is-walking');
+  is('ahora se ilumina la segunda parada', q('#board .stop.is-next').dataset.i, '1');
+  is('y la primera quedó hecha', q('#board .stop.is-done').dataset.i, '0');
+  click('#btn-step'); await wait(200);
+  is('el segundo bloque cuenta desde el 1, no desde el 0', readout(), 'x=4');
+  click('#btn-step'); await wait(200);
+  click('#btn-step'); await wait(2500);
+  truthy('un pasito también abre el cartel de ganó', !q('#overlay').hidden, 'el overlay no apareció');
+  closeOverlay();
+
+  log('# la plataforma se para a mitad de camino');
+  W.App.loadLevel(2, true);
+  await wait(100);
+  is('el nivel es t3', W.App.state.level.id, 't3');
+  click('[data-pal="0"]');
+  setNum(0, 2);
+  click('#btn-play');
+  await wait(4000);
+  truthy('avisa que faltan bloques', !q('#toast').hidden && /acabaron/i.test(q('#toast').textContent), q('#toast').textContent);
+  truthy('Tito ya está arriba igual', q('#worker').classList.contains('is-aboard'), 'no subió');
+  truthy('no ganó', q('#overlay').hidden, 'el overlay apareció');
+
+  log('# fase A: el ascensor');
+  W.App.loadLevel(4, true);
+  await wait(100);
+  is('el nivel es a1', W.App.state.level.id, 'a1');
+  truthy('no hay regla de x', q('#ruler-x').hidden, 'la regla de x quedó visible');
+  truthy('sí hay regla de y', !q('#ruler-y').hidden, 'la regla de y quedó oculta');
+  is('la regla de y tiene 9 pisos', all('#ruler-y span').length, 9);
+  truthy('el sótano tiene su pozo', !!q('#board .bg-pit'), 'no hay .bg-pit');
+  is('el cajón del piso 3 es una pila de 6', all('#board .crate').length, 6);
+  is('el bloque de la paleta dice cambiar y',
+    q('#palette .code').textContent.replace(/\s+/g, ' ').trim(), 'cambiar y en');
+  click('[data-pal="0"]');
+  setNum(0, 9);
+  click('#btn-play');
+  await wait(1500);
+  truthy('el aviso de y habla del cable', /cable/i.test(q('#toast').textContent), q('#toast').textContent);
+
+  log('# fase G: los dos ejes y números grandes');
+  W.App.loadLevel(10, true);
+  await wait(100);
+  is('el nivel es g3', W.App.state.level.id, 'g3');
+  is('la paleta tiene un bloque por eje', all('#palette .pal').length, 2);
+  is('el tablero es de 7x7', all('#board .cell').length, 49);
+  click('[data-pal="0"]'); click('[data-pal="1"]');
+  setNum(0, 6); setNum(1, 6);
+  click('#btn-play');
+  await wait(9000);
+  truthy('gana cruzando el tablero entero', !q('#overlay').hidden && /lo lograste/i.test(q('#overlay').textContent),
+    'no ganó');
+  is('la estela tiene un tramo rojo y uno azul',
+    all('#trail .seg-x').length + ':' + all('#trail .seg-y').length, '1:1');
+  closeOverlay();
+
+  log('# reset y resize no rompen la escena');
+  click('#btn-reset');
+  await wait(100);
+  is('reset vuelve al principio', readout(), 'x=-3y=-3');
+  is('la estela se borra', all('#trail path').length, 0);
+  W.dispatchEvent(new W.Event('resize'));
+  await wait(100);
+  is('después del resize siguen las 49 celdas', all('#board .cell').length, 49);
+  truthy('el tablero no quedó sin animaciones', !q('#board').classList.contains('no-anim'), 'sigue no-anim');
+
+  log('# la traductora');
+  click('#btn-translate');
+  truthy('se abre la traductora', /traductora/i.test(q('#overlay').textContent), 'no abrió');
+  truthy('el personaje es Tito', !!q('#overlay .worker'), 'no hay .worker en la traductora');
+  click('[data-tr="up"]');
+  is('subir traduce a cambiar y en 10',
+    q('#overlay .scratch-blk').textContent.replace(/\s+/g, ' ').trim(), 'cambiar y en 10');
+  truthy('avisa que no es el bloque absoluto', /fijar y a 10/.test(q('#tr-out').textContent),
+    q('#tr-out').textContent);
+  click('[data-tr="left"]');
+  is('izquierda traduce a cambiar x en -10',
+    q('#overlay .scratch-blk').textContent.replace(/\s+/g, ' ').trim(), 'cambiar x en -10');
+
+  /* El pack de España no cambia una palabra: mueve el eje al medio de la frase
+   * ("sumar a x 10"), así que esto verifica la plantilla entera. */
+  click('[data-word="espana"]');
+  click('[data-tr="right"]');
+  is('el pack de España usa sumar a x',
+    q('#overlay .scratch-blk').textContent.replace(/\s+/g, ' ').trim(), 'sumar a x 10');
+  truthy('y su bloque absoluto es dar a x el valor', /dar a x el valor 10/.test(q('#tr-out').textContent),
+    q('#tr-out').textContent);
+  closeOverlay();
+  is('la paleta también queda en español de España',
+    q('#palette .code').textContent.replace(/\s+/g, ' ').trim(), 'sumar a x');
+
+  log('# sin emojis en la pantalla');
+  var emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+  truthy('el HTML no tiene emojis', !emoji.test(D.body.innerHTML), 'hay algún emoji');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>shot</title>
+<style>html,body{margin:0;height:100%}iframe{border:0;width:100vw;height:100vh}</style>
+</head>
+<body>
+<iframe id="app" src="../index.html"></iframe>
+<script>
+/* Capture one level for a quick look at the layout:
+ *   chromium --headless --no-sandbox --disable-gpu --allow-file-access-from-files \
+ *     --force-prefers-reduced-motion --virtual-time-budget=8000 \
+ *     --window-size=1280,800 --screenshot=/tmp/g1.png \
+ *     "file://$PWD/tools/ui-shot.html?level=8&blocks=0,0,2,2"
+ *
+ * `level` is the index in LEVELS, `blocks` a comma list of palette indexes to
+ * drop in, `screen` opens an overlay (map / translator).
+ */
+var p = new URLSearchParams(location.search);
+document.getElementById('app').addEventListener('load', function (e) {
+  var W = e.target.contentWindow;
+  var D = e.target.contentDocument;
+  W.localStorage.clear();
+  W.Sound.setOn(false);
+  /* start() already ran and may have opened the phase intro; close it before
+   * loading the level we actually want to photograph. */
+  D.getElementById('overlay').hidden = true;
+  W.App.loadLevel(Number(p.get('level') || 0), true);
+  (p.get('blocks') || '').split(',').filter(String).forEach(function (i) {
+    W.App.addBlock(Number(i));
+  });
+  Number(p.get('dial') || 0) && (function () {
+    p.get('dial').split(',').forEach(function (pair) {
+      var a = pair.split(':');
+      for (var k = 0; k < Number(a[1]); k++) W.App.dialBlock(Number(a[0]), 1);
+    });
+  })();
+  if (p.get('screen') === 'translator') { W.App.showTranslator(); W.App.translate('up'); }
+  if (p.get('screen') === 'map') D.getElementById('btn-levels').click();
+});
+</script>
+</body>
+</html>

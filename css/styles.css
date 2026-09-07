@@ -1,0 +1,725 @@
+/* El Operador de Grúa
+ *
+ * One rule runs through the whole palette: X is always red, Y is always blue.
+ * Blocks, rulers, trails and the Scratch translation all obey it, so a child
+ * can answer "which axis is this?" from colour alone before reading.
+ *
+ * The rest is a warehouse: slate steel panels, an orange crane, hazard yellow
+ * paint and green "go" marks. Images live in assets/ and are only ever loaded
+ * through url() with relative paths, which works from file://.
+ */
+
+:root {
+  --bg: #151a24;
+  --panel: #1f2634;
+  --panel-2: #28324a;
+  --line: #3a4559;
+  --ink: #eef2f8;
+  --ink-dim: #a3b0c6;
+
+  --accent: #ff8a1f;
+  --accent-dark: #c9640a;
+  --hazard: #ffcc33;
+  --good: #3ddc84;
+
+  --x: #f2555a;
+  --x-dark: #b32d32;
+  --y: #4a7dff;
+  --y-dark: #2b4fb8;
+  --gold: #ffcc33;
+
+  --r: 12px;
+  --tap: 46px;
+
+  --stripe: repeating-linear-gradient(135deg, var(--hazard) 0 9px, #15181f 9px 18px);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+body { overflow: hidden; }
+
+#app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 8px;
+  padding: 10px clamp(10px, 2vw, 22px) 12px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+/* ------------------------------------------------------------------ topbar */
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#level-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* Stencilled wall text: heavy, uppercase, spaced out. */
+#level-title {
+  margin: 0;
+  font-size: clamp(0.95rem, 2.2vw, 1.35rem);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phase-badge {
+  flex: none;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--ink-dim);
+  text-transform: uppercase;
+}
+.phase-badge.is-x { background: rgba(242, 85, 90, 0.2); color: #ff9a9d; }
+.phase-badge.is-y { background: rgba(74, 125, 255, 0.2); color: #9fbaff; }
+.phase-badge.is-xy { background: linear-gradient(90deg, rgba(242,85,90,.22), rgba(74,125,255,.22)); color: #e2d3ff; }
+
+.chip {
+  flex: none;
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+.chip svg { width: 24px; height: 24px; }
+.chip:hover { border-color: var(--accent); color: var(--ink); }
+.chip.is-on { color: var(--hazard); border-color: rgba(255, 204, 51, 0.5); }
+
+.stars { display: flex; gap: 3px; flex: none; }
+.stars i {
+  width: 20px; height: 20px;
+  background: var(--line);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+.stars i.on { background: var(--gold); }
+
+/* The work order: a panel with a hazard stripe down its left edge. */
+.hint {
+  position: relative;
+  margin: 0;
+  padding: 10px 14px 10px 28px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: clamp(0.9rem, 1.7vw, 1.05rem);
+  line-height: 1.45;
+}
+.hint::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 14px;
+  background: var(--stripe);
+}
+
+/* ------------------------------------------------------------------- stage */
+
+#stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 330px);
+  gap: 14px;
+  min-height: 0;
+}
+
+#left-col {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------------- board */
+
+#board-wrap {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 6px;
+  min-height: 0;
+}
+
+/* The scene fills whatever room the column gives it; layout() in app.js then
+ * fits the cells inside. Nothing in here has a CSS position of its own. */
+#board {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  background: #0d1119;
+  border: 3px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  --dur: 300ms;
+}
+#board > * { position: absolute; }
+
+.bg-wall {
+  background: url(../assets/bg-wall.png) center bottom / cover no-repeat;
+  z-index: 0;
+}
+.bg-pit {
+  background:
+    var(--stripe) top / 100% 6px no-repeat,
+    #2a3140;
+  border-top: 1px solid #454f63;
+  z-index: 0;
+}
+.bg-floor {
+  background: url(../assets/bg-floor.png) center top / cover no-repeat;
+  z-index: 0;
+}
+.ground-line { background: rgba(255, 255, 255, 0.35); z-index: 1; }
+
+.cell {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  z-index: 2;
+}
+.cell.is-origin { background: rgba(255, 204, 51, 0.18); }
+.cell.is-axis-x { background: rgba(242, 85, 90, 0.14); }
+.cell.is-axis-y { background: rgba(74, 125, 255, 0.14); }
+.cell.is-ground { border-bottom: 3px solid rgba(255, 255, 255, 0.35); }
+
+.crate {
+  background: url(../assets/crate.png) center / 100% 100% no-repeat;
+  z-index: 3;
+}
+.exit-sign { z-index: 4; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5)); }
+.exit-sign svg { width: 100%; height: 100%; display: block; }
+
+/* Only the next stop glows; done ones vanish, later ones wait in the dark. */
+.stop {
+  background: url(../assets/stop.png) center / 100% 100% no-repeat;
+  z-index: 4;
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+.stop.is-done { opacity: 0; }
+.stop.is-later { opacity: 0.45; filter: saturate(0.4) brightness(0.8); }
+.stop.is-next {
+  opacity: 1;
+  filter: saturate(2.4) brightness(1.15) drop-shadow(0 0 12px #4dff7a);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+#trail { left: 0; top: 0; pointer-events: none; z-index: 5; }
+#trail .seg-x { stroke: var(--x); }
+#trail .seg-y { stroke: var(--y); }
+#trail path { fill: none; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 8 7; opacity: 0.9; }
+
+.beam {
+  left: 0;
+  background: url(../assets/beam.png) center / 100% 100% no-repeat;
+  z-index: 6;
+}
+
+/* The rig moves in x as a whole; the spreader and cables move in y inside. */
+.rig { z-index: 7; pointer-events: none; }
+.rig > * { position: absolute; }
+.trolley { background: url(../assets/trolley.png) center / 100% 100% no-repeat; z-index: 2; }
+.cable { background: url(../assets/cable.png) top / 100% auto repeat-y; z-index: 1; }
+.spreader { background: url(../assets/spreader.png) center / 100% 100% no-repeat; z-index: 3; }
+
+.rig, .spreader, .cable, .worker {
+  transition-property: left, top, height;
+  transition-duration: var(--dur, 300ms);
+  transition-timing-function: ease-in-out;
+}
+#board.no-anim, #board.no-anim * { transition: none !important; }
+
+.rig.is-crashed { animation: shake 0.5s; }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px) rotate(-1.5deg); }
+  60% { transform: translateX(6px) rotate(1.5deg); }
+}
+
+/* Tito. A square frame of side --fw showing one cell of a horizontal sprite
+ * sheet; --n is how many frames the current sheet has. The keyframe reads the
+ * element's own custom properties, so one animation serves all three sheets. */
+.worker {
+  --n: 2;
+  width: var(--fw, 64px);
+  height: var(--fw, 64px);
+  background-image: url(../assets/worker-idle.png);
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: calc(var(--fw, 64px) * var(--n)) var(--fw, 64px);
+  image-rendering: pixelated;
+  animation: sheet 1.2s steps(2) infinite;
+  pointer-events: none;
+  z-index: 8;
+}
+.worker.is-walking {
+  --n: 8;
+  background-image: url(../assets/worker-walk.png);
+  animation: sheet 0.8s steps(8) infinite;
+}
+.worker.is-jumping {
+  --n: 13;
+  background-image: url(../assets/worker-jump.png);
+  animation: sheet 1.1s steps(13) 1;
+}
+.worker.is-left { transform: scaleX(-1); }
+
+@keyframes sheet {
+  to { background-position-x: calc(var(--fw, 64px) * var(--n) * -1); }
+}
+
+/* --------------------------------------------------------------- the ruler */
+
+.ruler { left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+.ruler[hidden] { display: none; }
+.ruler span {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: clamp(0.65rem, calc(var(--cell, 40px) * 0.4), 1.1rem);
+  letter-spacing: 0.02em;
+}
+/* Floor paint: yellow numbers on the warehouse floor. */
+.ruler-x span { color: var(--hazard); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); }
+.ruler-y span { color: #9fbaff; }
+.ruler span.zero { color: #fff; }
+.ruler-x span.zero { background: rgba(255, 204, 51, 0.25); border-radius: 4px; }
+.ruler-y span.zero { background: rgba(74, 125, 255, 0.25); border-radius: 4px; }
+
+/* A dark LED display under the scene. */
+.readout {
+  justify-self: center;
+  min-height: 1.6em;
+  padding: 3px 18px;
+  background: #0a0d14;
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  color: var(--hazard);
+  text-shadow: 0 0 6px rgba(255, 204, 51, 0.5);
+}
+.readout .vx { color: #ff7a7e; text-shadow: 0 0 6px rgba(242, 85, 90, 0.6); }
+.readout .vy { color: #7fa3ff; text-shadow: 0 0 6px rgba(74, 125, 255, 0.6); }
+
+/* ----------------------------------------------------------------- palette */
+
+#palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  padding-bottom: 4px;
+}
+
+/* Scratch-like puzzle pieces: a notch cut into the top edge and a bump under
+ * the bottom edge, both drawn with pseudo-elements. */
+.pal, .blk { position: relative; }
+.pal::before, .blk::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 14px;
+  width: 22px; height: 5px;
+  border-radius: 0 0 5px 5px;
+  background: var(--bg);
+}
+.pal::after, .blk::after {
+  content: '';
+  position: absolute;
+  bottom: -5px; left: 14px;
+  width: 22px; height: 5px;
+  border-radius: 0 0 5px 5px;
+}
+.pal.axis-x::after, .blk.axis-x::after { background: var(--x); }
+.pal.axis-y::after, .blk.axis-y::after { background: var(--y); }
+.blk::before { background: var(--panel); }
+
+.pal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 800;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+.pal.axis-x { background: var(--x); }
+.pal.axis-y { background: var(--y); }
+.pal:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); }
+.pal[disabled] { opacity: 0.35; cursor: not-allowed; }
+.pal .code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 1rem; }
+/* The empty oval is the Scratch slot waiting for a number. */
+.pal .slot {
+  display: inline-block;
+  width: 40px; height: 22px;
+  vertical-align: middle;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.pal .count {
+  min-width: 24px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 0.8rem;
+}
+
+/* ---------------------------------------------------------------- controls */
+
+#controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+.ctrl {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 16px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ctrl svg { width: 20px; height: 20px; }
+.ctrl:hover { border-color: var(--ink-dim); }
+.ctrl[disabled] { opacity: 0.4; cursor: not-allowed; }
+.ctrl-play {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1d0d00;
+  font-size: 1.05rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0 26px;
+  box-shadow: 0 3px 0 var(--accent-dark);
+}
+.ctrl-play:hover { border-color: #ffb066; }
+.ctrl-play:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--accent-dark); }
+.ctrl-play svg { width: 18px; height: 18px; }
+.ctrl-danger:hover { border-color: var(--x); color: #ff9a9d; }
+
+/* ----------------------------------------------------------------- program */
+
+#flow-area {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 10px;
+  min-height: 0;
+}
+
+.flow-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--hazard);
+  padding-bottom: 6px;
+  border-bottom: 2px dashed var(--line);
+}
+
+#flow-scroll { overflow-y: auto; min-height: 0; }
+
+#program { display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
+
+.program-empty { color: var(--ink-dim); font-size: 0.88rem; line-height: 1.4; margin: 6px 2px; }
+.program-empty[hidden] { display: none; }
+
+.blk {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px 8px;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 800;
+  border: 3px solid transparent;
+}
+.blk.axis-x { background: var(--x); }
+.blk.axis-y { background: var(--y); }
+.blk.is-current { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(255, 204, 51, 0.25); }
+.blk.is-bad { border-color: #fff; animation: shake 0.4s; }
+.blk .code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.86rem;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The white oval of a Scratch number slot, but a real editable field. */
+.blk .num {
+  width: 52px;
+  flex: none;
+  padding: 5px 6px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #fff;
+  color: #16233a;
+  font: inherit;
+  font-weight: 800;
+  font-size: 1rem;
+  text-align: center;
+}
+.blk .num:focus { outline: none; border-color: var(--gold); }
+
+.blk .step, .blk .del {
+  width: 28px; height: 28px;
+  flex: none;
+  display: grid; place-items: center;
+  border: none; border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  font: inherit; font-weight: 800; font-size: 1.05rem;
+  cursor: pointer;
+}
+.blk .step:hover, .blk .del:hover { background: rgba(0, 0, 0, 0.45); }
+.blk .del { border-radius: 999px; font-size: 1rem; }
+
+/* ----------------------------------------------------------------- overlay */
+
+/* Flex + margin:auto instead of place-items:center: a card taller than the
+ * screen must scroll, and a centred grid item clips its own top instead. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 8, 14, 0.84);
+  display: flex;
+  padding: 18px;
+  z-index: 50;
+  overflow-y: auto;
+}
+.overlay[hidden] { display: none; }
+
+.card {
+  position: relative;
+  margin: auto;
+  width: min(620px, 100%);
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 26px 20px 20px;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 8px;
+  background: var(--stripe);
+}
+.card h2 {
+  margin: 0 0 10px;
+  font-size: 1.3rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.card p { margin: 0 0 10px; line-height: 1.5; }
+.card .lead { color: var(--ink-dim); }
+.card-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+.letter-hint { display: flex; gap: 14px; margin: 14px 0; flex-wrap: wrap; }
+.letter-hint div {
+  flex: 1 1 180px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  text-align: center;
+  font-weight: 700;
+}
+.letter-hint b { display: block; font-size: 2.6rem; line-height: 1; }
+.letter-hint .lx b { color: var(--x); }
+.letter-hint .ly b { color: var(--y); }
+
+.level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.level-grid h3 {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: var(--hazard);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.lvl {
+  padding: 10px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.lvl:hover { border-color: var(--accent); }
+.lvl.is-current { border-color: var(--accent); }
+.lvl .stars { margin-top: 6px; }
+.lvl .stars i { width: 14px; height: 14px; }
+
+/* -------------------------------------------------------------- traductora */
+
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: min(300px, 100%); margin: 12px auto; }
+.pad button {
+  min-height: 58px;
+  border: none; border-radius: 8px;
+  font: inherit; font-weight: 800; color: #fff;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+.pad button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); }
+.pad .up { grid-column: 2; background: var(--y); }
+.pad .left { grid-column: 1; grid-row: 2; background: var(--x); }
+.pad .right { grid-column: 3; grid-row: 2; background: var(--x); }
+.pad .down { grid-column: 2; grid-row: 3; background: var(--y); }
+.pad .mid { grid-column: 2; grid-row: 2; display: grid; place-items: center; background: var(--panel-2); }
+
+.tr-stage {
+  position: relative;
+  height: 150px;
+  background:
+    linear-gradient(var(--x), var(--x)) center / 100% 2px no-repeat,
+    linear-gradient(var(--y), var(--y)) center / 2px 100% no-repeat,
+    var(--bg);
+  border: 2px dashed var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.tr-stage::after {
+  content: 'el escenario de Scratch';
+  position: absolute;
+  left: 8px; bottom: 6px;
+  font-size: 0.7rem;
+  color: var(--ink-dim);
+}
+.tr-worker {
+  position: absolute;
+  left: 50%; top: 50%;
+  margin: -32px 0 0 -32px;
+  transition: margin 0.28s ease;
+}
+
+.tr-out { margin-top: 14px; text-align: center; min-height: 96px; }
+.tr-say { color: var(--ink-dim); margin-bottom: 8px; }
+.scratch-blk {
+  display: inline-block;
+  padding: 12px 20px;
+  border-radius: 8px;
+  background: var(--y);
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.15rem;
+  box-shadow: 0 4px 0 var(--y-dark);
+}
+.scratch-blk.axis-x { background: var(--x); box-shadow: 0 4px 0 var(--x-dark); }
+.scratch-blk .num {
+  display: inline-block;
+  min-width: 46px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fff;
+  color: #1a1a1a;
+  margin-left: 6px;
+}
+
+.tr-warn { margin-top: 12px; font-size: 0.85rem; color: var(--ink-dim); line-height: 1.4; }
+.tr-warn b { color: var(--ink); font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+.wording { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 14px; font-size: 0.85rem; color: var(--ink-dim); }
+.wording button {
+  padding: 6px 12px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink-dim);
+  font: inherit; font-weight: 700;
+  cursor: pointer;
+}
+.wording button.on { border-color: var(--hazard); color: var(--hazard); }
+
+/* ------------------------------------------------------------------- toast */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  background: var(--panel-2);
+  border: 2px solid var(--hazard);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-weight: 700;
+  z-index: 60;
+}
+.toast[hidden] { display: none; }
+
+/* ------------------------------------------------------------------ narrow */
+
+@media (max-width: 780px) {
+  body { overflow: auto; }
+  #app { height: auto; min-height: 100%; }
+  #stage { grid-template-columns: 1fr; }
+  #left-col { grid-template-rows: auto auto auto; }
+  #board-wrap { min-height: 46vh; }
+  #flow-area { max-height: none; }
+  #flow-scroll { overflow: visible; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rig, .spreader, .cable, .worker, .stop, .tr-worker { transition: none !important; }
+  .worker, .stop.is-next, .rig.is-crashed, .blk.is-bad { animation: none !important; }
+}
