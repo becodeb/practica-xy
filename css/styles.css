@@ -10,10 +10,10 @@
  */
 
 :root {
-  --bg: #151a24;
-  --panel: #1f2634;
-  --panel-2: #28324a;
-  --line: #3a4559;
+  --bg: #101923;
+  --panel: #1b2938;
+  --panel-2: #26394c;
+  --line: #3b5064;
   --ink: #eef2f8;
   --ink-dim: #a3b0c6;
 
@@ -45,14 +45,14 @@ html, body {
   -webkit-text-size-adjust: 100%;
 }
 
-body { overflow: hidden; }
+body { overflow: hidden; background: radial-gradient(ellipse at 25% 0, #263c51, transparent 65%), var(--bg); }
 
 #app {
   height: 100%;
   display: grid;
   grid-template-rows: auto auto 1fr;
-  gap: 8px;
-  padding: 10px clamp(10px, 2vw, 22px) 12px;
+  gap: 12px;
+  padding: 16px clamp(10px, 2vw, 22px) 16px;
   max-width: 1280px;
   margin: 0 auto;
 }
@@ -73,13 +73,12 @@ body { overflow: hidden; }
   gap: 10px;
 }
 
-/* Stencilled wall text: heavy, uppercase, spaced out. */
+/* A compact title leaves room for the level controls. */
 #level-title {
   margin: 0;
   font-size: clamp(0.95rem, 2.2vw, 1.35rem);
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-weight: 800;
+  letter-spacing: -0.025em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -176,15 +175,16 @@ body { overflow: hidden; }
   min-height: 0;
   min-width: 0;
   background: #0d1119;
-  border: 3px solid var(--line);
-  border-radius: var(--r);
+  border: 1px solid #52687d;
+  border-radius: 16px;
+  box-shadow: 0 16px 36px #0004, inset 0 0 40px #0003;
   overflow: hidden;
   --dur: 300ms;
 }
 #board > * { position: absolute; }
 
 .bg-wall {
-  background: url(../assets/bg-wall.png) center bottom / cover no-repeat;
+  background: linear-gradient(180deg, #18334b44, #0c1c3288), url(../assets/bg-wall.png) center bottom / cover no-repeat;
   z-index: 0;
 }
 .bg-pit {
@@ -201,7 +201,7 @@ body { overflow: hidden; }
 .ground-line { background: rgba(255, 255, 255, 0.35); z-index: 1; }
 
 .cell {
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(214, 234, 255, 0.14);
   z-index: 2;
 }
 .cell.is-origin { background: rgba(255, 204, 51, 0.18); }
@@ -251,7 +251,7 @@ body { overflow: hidden; }
 .rig > * { position: absolute; }
 .trolley { background: url(../assets/trolley.png) center / 100% 100% no-repeat; z-index: 2; }
 .cable { background: url(../assets/cable.png) top / 100% auto repeat-y; z-index: 1; }
-.spreader { background: url(../assets/spreader.png) center / 100% 100% no-repeat; z-index: 3; }
+.spreader { background: url(../assets/elevator-frame.png) center / 100% 100% no-repeat; z-index: 3; filter: drop-shadow(0 4px 3px #0005); }
 
 .rig, .spreader, .cable, .worker {
   transition-property: left, top, height;
@@ -282,7 +282,8 @@ body { overflow: hidden; }
   image-rendering: pixelated;
   animation: sheet 1.2s steps(2) infinite;
   pointer-events: none;
-  z-index: 8;
+  /* The transparent cabin frame occludes Tito while he enters and rides. */
+  z-index: 6;
 }
 .worker.is-walking {
   --n: 8;
@@ -344,7 +345,10 @@ body { overflow: hidden; }
   flex-wrap: wrap;
   gap: 10px;
   justify-content: center;
-  padding-bottom: 4px;
+  padding: 12px 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #172432;
 }
 
 /* Scratch-like puzzle pieces: a notch cut into the top edge and a bump under
@@ -450,7 +454,8 @@ body { overflow: hidden; }
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r);
-  padding: 10px;
+  padding: 16px;
+  box-shadow: 0 12px 28px #0002;
   min-height: 0;
 }
 
@@ -461,15 +466,15 @@ body { overflow: hidden; }
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--hazard);
-  padding-bottom: 6px;
-  border-bottom: 2px dashed var(--line);
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
 }
 
 #flow-scroll { overflow-y: auto; min-height: 0; }
 
 #program { display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
 
-.program-empty { color: var(--ink-dim); font-size: 0.88rem; line-height: 1.4; margin: 6px 2px; }
+.program-empty { color: #bdccdc; font-size: 0.95rem; line-height: 1.65; margin: 16px 2px; padding: 20px 14px; border: 1px dashed #53687b; border-radius: 10px; background: #142130; }
 .program-empty[hidden] { display: none; }
 
 .blk {
@@ -714,9 +719,20 @@ body { overflow: hidden; }
   #app { height: auto; min-height: 100%; }
   #stage { grid-template-columns: 1fr; }
   #left-col { grid-template-rows: auto auto auto; }
-  #board-wrap { min-height: 46vh; }
+  #board-wrap { min-height: 46vh; grid-template-rows: minmax(300px, 46vh) auto; }
   #flow-area { max-height: none; }
   #flow-scroll { overflow: visible; }
+}
+
+button:focus-visible, input:focus-visible { outline: 3px solid #ffe39a; outline-offset: 3px; }
+
+@media (max-width: 480px) {
+  #topbar { gap: 6px; flex-wrap: wrap; }
+  #level-info { flex-basis: calc(100% - 60px); }
+  #level-title { white-space: normal; }
+  #level-info { align-items: flex-start; flex-direction: column; gap: 3px; }
+  #stars-earned { margin-right: auto; }
+  #app { padding-top: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
