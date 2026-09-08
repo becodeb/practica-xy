@@ -32,7 +32,6 @@
    * floor strip (where the x ruler is painted) below the bottom one. */
   var BEAM_H = 0.6;
   var FLOOR_H = 0.5;
-  var CELL_MIN = 26;
   var CELL_MAX = 120;
   var RULER_W = 36;
   var PAD = 6;
@@ -41,7 +40,11 @@
   var WALK_MS = 650;
   var GAP_MS = 150;
   var TROLLEY_RATIO = 84 / 299;
-  var SPREADER_RATIO = 184 / 230;
+  // Keep the cabin and sprite proportions shared by layout and animation.
+  var CABIN_WIDTH = 1.18;
+  var CABIN_HEIGHT = 1.22;
+  var WORKER_SIZE = 0.86;
+  var CABIN_SILL = 0.19;
 
   /* The two Spanish packs Scratch actually ships, taken from scratch-l10n
    * (editor/blocks/es.json and es-419.json). They do not just differ in one
@@ -161,7 +164,8 @@
     var availW = boardW - 2 * PAD - 2 * rulerW;
     var availH = boardH - 2 * PAD;
     var cell = Math.min(availW / (nc + 2), availH / (sceneRows + BEAM_H + FLOOR_H));
-    cell = Math.max(CELL_MIN, Math.min(CELL_MAX, cell));
+    // Fit all columns on narrow screens instead of clipping the end stops.
+    cell = Math.max(1, Math.min(CELL_MAX, cell));
 
     var H = (BEAM_H + sceneRows + FLOOR_H) * cell;
     var oy = (boardH - H) / 2;
@@ -257,7 +261,7 @@
     var cell = g.cell;
 
     board.style.setProperty('--cell', px(cell));
-    board.style.setProperty('--fw', px(cell));
+    board.style.setProperty('--fw', px(cell * WORKER_SIZE));
 
     var wall = board.querySelector('.bg-wall');
     box(wall, 0, 0, g.boardW, g.groundY);
@@ -303,7 +307,7 @@
     var tw = 1.4 * cell, th = tw * TROLLEY_RATIO;
     box(rig.querySelector('.trolley'), (cell - tw) / 2, (BEAM_H * cell - th) / 2, tw, th);
 
-    var sw = 1.05 * cell, sh = sw * SPREADER_RATIO;
+    var sw = CABIN_WIDTH * cell, sh = CABIN_HEIGHT * cell;
     var spreader = rig.querySelector('.spreader');
     spreader.style.left = px((cell - sw) / 2);
     spreader.style.width = px(sw);
@@ -312,8 +316,8 @@
     var cw = 0.07 * cell;
     var cl = rig.querySelector('.cable-l');
     var cr = rig.querySelector('.cable-r');
-    cl.style.left = px((cell - sw) / 2 + 0.07 * sw - cw / 2);
-    cr.style.left = px((cell - sw) / 2 + 0.93 * sw - cw / 2);
+    cl.style.left = px((cell - sw) / 2 + 0.10 * sw - cw / 2);
+    cr.style.left = px((cell - sw) / 2 + 0.90 * sw - cw / 2);
     cl.style.width = cr.style.width = px(cw);
     cl.style.top = cr.style.top = px((BEAM_H * cell - th) / 2 + th);
 
@@ -373,7 +377,7 @@
     /* The platform and everything hanging from it. */
     var rig = $('rig');
     rig.style.left = px(g.cellLeft(st.x));
-    var sw = 1.05 * cell, sh = sw * SPREADER_RATIO;
+    var sh = CABIN_HEIGHT * cell;
     var spreaderTop = g.cellTop(st.y) + cell - sh - g.oy;
     rig.querySelector('.spreader').style.top = px(spreaderTop);
     var cableTop = parseFloat(rig.querySelector('.cable-l').style.top) || 0;
@@ -388,9 +392,10 @@
     var worker = $('worker');
     var wx = who.aboard ? st.x : who.cell.x;
     var wy = who.aboard ? st.y : who.cell.y;
-    var feet = g.cellTop(wy) + cell - (who.aboard ? 0.06 * cell : 0);
-    worker.style.left = px(g.cellLeft(wx));
-    worker.style.top = px(feet - 0.965 * cell);
+    var workerSize = Math.round(cell * WORKER_SIZE);
+    var feet = g.cellTop(wy) + cell - (who.aboard ? CABIN_SILL * cell : 0);
+    worker.style.left = px(g.centerX(wx) - workerSize / 2);
+    worker.style.top = px(feet - 0.965 * workerSize);
     worker.classList.toggle('is-left', who.left);
     worker.classList.toggle('is-aboard', who.aboard);
 
