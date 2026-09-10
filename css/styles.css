@@ -50,11 +50,12 @@ body { overflow: hidden; background: radial-gradient(ellipse at 25% 0, #263c51, 
 #app {
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto 1fr;
-  gap: 12px;
-  padding: 16px clamp(10px, 2vw, 22px) 16px;
-  max-width: 1280px;
-  margin: 0 auto;
+  /* Two rows now: the header carries the consigna, so the stage gets the rest
+   * of the screen. And the whole width — a workspace boxed into 1280px is a
+   * workspace a child cannot spread blocks out in. */
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px clamp(8px, 1.4vw, 18px) 12px;
 }
 
 /* ------------------------------------------------------------------ topbar */
@@ -66,7 +67,7 @@ body { overflow: hidden; background: radial-gradient(ellipse at 25% 0, #263c51, 
 }
 
 #level-info {
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
   display: flex;
   align-items: baseline;
@@ -132,8 +133,21 @@ body { overflow: hidden; background: radial-gradient(ellipse at 25% 0, #263c51, 
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
-  font-size: clamp(0.9rem, 1.7vw, 1.05rem);
-  line-height: 1.45;
+  font-size: clamp(0.8rem, 1.35vw, 0.95rem);
+  line-height: 1.3;
+  /* It sits in the header now, so it gets whatever width is left and never
+   * more than two lines. The whole consigna used to be a paragraph of its own
+   * and it was most of the text on screen. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Two lines and an ellipsis, never a third bleeding into the padding. */
+.hint > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .hint::before {
   content: '';
@@ -147,14 +161,33 @@ body { overflow: hidden; background: radial-gradient(ellipse at 25% 0, #263c51, 
 
 #stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 330px);
-  gap: 14px;
+  /* Flyout, workspace, warehouse — the arrangement Scratch and Code.org share,
+   * and the reason the app now takes the whole width instead of a 1280 column. */
+  grid-template-columns: minmax(248px, 18%) minmax(260px, 1fr) minmax(360px, 42%);
+  gap: 10px;
   min-height: 0;
 }
 
-#left-col {
+#palette-col, #flow-area, #game-col { min-width: 0; min-height: 0; }
+
+#palette-col {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 12px 10px;
+  overflow: auto;
+}
+
+.col-title {
+  margin: 0 0 12px 6px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--ink-dim);
+}
+
+#game-col {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
   min-height: 0;
 }
@@ -342,71 +375,98 @@ body { overflow: hidden; background: radial-gradient(ellipse at 25% 0, #263c51, 
 
 #palette {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
-  padding: 12px 10px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #172432;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
 }
 
-/* Scratch-like puzzle pieces: a notch cut into the top edge and a bump under
- * the bottom edge, both drawn with pseudo-elements. */
-.pal, .blk { position: relative; }
-.pal::before, .blk::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 14px;
-  width: 22px; height: 5px;
-  border-radius: 0 0 5px 5px;
-  background: var(--bg);
-}
-.pal::after, .blk::after {
-  content: '';
-  position: absolute;
-  bottom: -5px; left: 14px;
-  width: 22px; height: 5px;
-  border-radius: 0 0 5px 5px;
-}
-.pal.axis-x::after, .blk.axis-x::after { background: var(--x); }
-.pal.axis-y::after, .blk.axis-y::after { background: var(--y); }
-.blk::before { background: var(--panel); }
+/* ------------------------------------------------------------------ blocks */
 
-.pal {
-  display: flex;
+/* The outline is an svg drawn by js/shapes.js, sitting behind the label. Every
+ * block is exactly one BODY tall (48px) so a stack lines up on its own, and the
+ * svg is allowed to spill 8px past the bottom because that is the tab. */
+.pal, .blk, .hat {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: var(--tap);
-  padding: 8px 12px;
-  border: none;
-  border-radius: 6px;
-  font: inherit;
-  font-weight: 800;
+  gap: 6px;
+  height: 48px;
+  padding: 0 14px 0 15px;
   color: #fff;
-  cursor: pointer;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+  /* Not monospace. Scratch sets its blocks in a bold sans, and monospace reads
+   * "code editor" to a child who has never seen one. */
+  font-weight: 800;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
-.pal.axis-x { background: var(--x); }
-.pal.axis-y { background: var(--y); }
-.pal:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); }
-.pal[disabled] { opacity: 0.35; cursor: not-allowed; }
-.pal .code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 1rem; }
+
+.shape {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+.shape path {
+  stroke-width: 1;
+  /* The solidity comes from a darker edge of the same hue, the way Scratch
+   * does it — not from a drop shadow slab under a rectangle. */
+  stroke: rgba(0, 0, 0, 0.35);
+}
+.axis-x .shape path { fill: var(--x); }
+.axis-y .shape path { fill: var(--y); }
+
+.pal > *:not(.shape), .blk > *:not(.shape), .hat > *:not(.shape) { position: relative; z-index: 1; }
+
+.pal .code, .blk .code, .hat .code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 /* The empty oval is the Scratch slot waiting for a number. */
 .pal .slot {
   display: inline-block;
-  width: 40px; height: 22px;
-  vertical-align: middle;
+  width: 42px;
+  height: 24px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 }
+
+/* How many legs of the trip are left in this block's budget. */
 .pal .count {
-  min-width: 24px;
-  padding: 1px 6px;
+  margin-left: 4px;
+  min-width: 22px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.28);
   font-size: 0.8rem;
+  text-align: center;
 }
+
+.pal:hover, .blk:hover { filter: brightness(1.07); }
+.pal[data-spent] { opacity: 0.35; cursor: not-allowed; }
+.pal:focus-visible, .blk:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; border-radius: 6px; }
+
+/* --------------------------------------------------------------------- hat */
+
+/* "al ejecutar" is where a program starts, and the dome is the only thing
+ * saying so: nothing can plug in above a curve. Warehouse orange, never an
+ * axis colour, because it is not a move. */
+.hat {
+  height: 70px;
+  padding-top: 22px;
+  color: #2a1a08;
+  font-size: 1rem;
+}
+.hat .shape path { fill: var(--accent); stroke: var(--accent-dark); }
 
 /* ---------------------------------------------------------------- controls */
 
@@ -447,64 +507,56 @@ body { overflow: hidden; background: radial-gradient(ellipse at 25% 0, #263c51, 
 
 /* ----------------------------------------------------------------- program */
 
+/* The workspace. Dotted paper, so a block dropped in open space reads as
+ * parked rather than lost. */
 #flow-area {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 8px;
-  background: var(--panel);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.11) 1px, transparent 1px) 0 0 / 24px 24px,
+    var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--r);
-  padding: 16px;
-  box-shadow: 0 12px 28px #0002;
   min-height: 0;
 }
 
-.flow-title {
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--hazard);
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--line);
+#flow-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
 }
 
-#flow-scroll { overflow-y: auto; min-height: 0; }
+#script { display: inline-flex; flex-direction: column; align-items: flex-start; }
+#program { display: flex; flex-direction: column; align-items: flex-start; }
 
-#program { display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
+/* Blocks in a stack touch: the tab of one drops into the notch of the next and
+ * the seam disappears. Any gap here breaks the illusion. */
+.blk + .blk { margin-top: 0; }
 
-.program-empty { color: #bdccdc; font-size: 0.95rem; line-height: 1.65; margin: 16px 2px; padding: 20px 14px; border: 1px dashed #53687b; border-radius: 10px; background: #142130; }
-.program-empty[hidden] { display: none; }
+/* Loose blocks are placed by hand, so they get their own layer above the
+ * script and keep the coordinates they were dropped at. */
+#loose { position: absolute; inset: 0; pointer-events: none; }
+#loose .blk { position: absolute; pointer-events: auto; }
 
-.blk {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 8px 8px;
+/* Where the held block will land. Blockly calls it an insertion marker. */
+#drop-marker {
+  width: 168px;
+  height: 48px;
   border-radius: 6px;
-  color: #fff;
-  font-weight: 800;
-  border: 3px solid transparent;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.3);
 }
-.blk.axis-x { background: var(--x); }
-.blk.axis-y { background: var(--y); }
-.blk.is-current { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(255, 204, 51, 0.25); }
-.blk.is-bad { border-color: #fff; animation: shake 0.4s; }
-.blk .code {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.86rem;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
+
+.blk.is-current .shape path { stroke: var(--gold); stroke-width: 3; }
+.blk.is-bad { animation: shake 0.4s; }
+.blk.is-bad .shape path { stroke: #fff; stroke-width: 3; }
 
 /* The white oval of a Scratch number slot, but a real editable field. */
 .blk .num {
-  width: 52px;
+  width: 54px;
   flex: none;
   padding: 5px 6px;
   border: 2px solid transparent;
@@ -515,21 +567,80 @@ body { overflow: hidden; background: radial-gradient(ellipse at 25% 0, #263c51, 
   font-weight: 800;
   font-size: 1rem;
   text-align: center;
+  cursor: text;
+  touch-action: auto;
 }
 .blk .num:focus { outline: none; border-color: var(--gold); }
 
-.blk .step, .blk .del {
-  width: 28px; height: 28px;
+.blk .step {
+  width: 26px;
+  height: 26px;
   flex: none;
-  display: grid; place-items: center;
-  border: none; border-radius: 6px;
-  background: rgba(0, 0, 0, 0.28);
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.26);
   color: #fff;
-  font: inherit; font-weight: 800; font-size: 1.05rem;
+  font: inherit;
+  font-weight: 800;
+  font-size: 1.05rem;
   cursor: pointer;
+  touch-action: auto;
 }
-.blk .step:hover, .blk .del:hover { background: rgba(0, 0, 0, 0.45); }
-.blk .del { border-radius: 999px; font-size: 1rem; }
+.blk .step:hover { background: rgba(0, 0, 0, 0.45); }
+
+/* An empty workspace has to say what to do, in one line, and get out of the
+ * way as soon as the first block lands. */
+.program-empty {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  max-width: 30ch;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.program-empty b { color: var(--accent); }
+.program-empty[hidden] { display: none; }
+
+/* ------------------------------------------------------------------ the bin */
+
+/* Blockly's trashcan, in the corner it always lives in. Dragging a block onto
+ * the flyout throws it away too, which is the Scratch gesture. */
+.bin {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms, transform 120ms;
+}
+.bin svg { width: 22px; height: 22px; }
+.bin:hover, .bin.is-hot { color: #ff9a9d; border-color: var(--x); }
+.bin.is-hot { transform: scale(1.12); }
+
+/* --------------------------------------------------------------- the drag */
+
+#drag-layer { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+#drag-layer .blk {
+  position: fixed;
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.55));
+}
+/* Snapping distance reached: the block lifts a little to say it will click in. */
+#drag-layer .blk.will-snap { transform: scale(1.03); }
+#drag-layer .blk.will-drop { opacity: 0.5; }
+
+body.is-dragging-block { cursor: grabbing; }
+body.is-dragging-block .pal, body.is-dragging-block .blk { cursor: grabbing; }
 
 /* ----------------------------------------------------------------- overlay */
 
@@ -714,25 +825,30 @@ body { overflow: hidden; background: radial-gradient(ellipse at 25% 0, #263c51, 
 
 /* ------------------------------------------------------------------ narrow */
 
-@media (max-width: 780px) {
-  body { overflow: auto; }
-  #app { height: auto; min-height: 100%; }
-  #stage { grid-template-columns: 1fr; }
-  #left-col { grid-template-rows: auto auto auto; }
-  #board-wrap { min-height: 46vh; grid-template-rows: minmax(300px, 46vh) auto; }
-  #flow-area { max-height: none; }
-  #flow-scroll { overflow: visible; }
+/* Three columns cannot survive a tablet held upright. The warehouse goes on
+ * top because that is what the child is looking at, then the flyout as a
+ * strip, then the workspace with room to drop into. */
+@media (max-width: 1000px) {
+  #app { grid-template-rows: auto 1fr; }
+  #stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(320px, 1fr);
+    overflow: auto;
+  }
+  #game-col { order: 1; }
+  #palette-col { order: 2; }
+  #flow-area { order: 3; min-height: 320px; }
+  #palette { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  #board-wrap { min-height: 46vh; }
+  /* The consigna drops to its own row instead of fighting the chips for the
+     scraps of width left in the header. */
+  #topbar { flex-wrap: wrap; }
+  .hint { flex-basis: 100%; order: 5; }
 }
 
-button:focus-visible, input:focus-visible { outline: 3px solid #ffe39a; outline-offset: 3px; }
-
 @media (max-width: 480px) {
-  #topbar { gap: 6px; flex-wrap: wrap; }
-  #level-info { flex-basis: calc(100% - 60px); }
-  #level-title { white-space: normal; }
-  #level-info { align-items: flex-start; flex-direction: column; gap: 3px; }
-  #stars-earned { margin-right: auto; }
-  #app { padding-top: 10px; }
+  #app { padding: 8px 8px 10px; gap: 8px; }
+  #flow-scroll { padding: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

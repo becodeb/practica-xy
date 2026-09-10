@@ -75,7 +75,15 @@
   var state = {
     index: 0,
     level: null,
+    /* The script hanging off the hat, in order. This is the program that runs. */
     program: [],
+    /* Blocks dropped anywhere else in the workspace. They are real blocks the
+     * child owns and their budget is spent, they simply are not plugged in, so
+     * they do not run. Scratch works the same way and children read it fine:
+     * if it is not attached to the hat, it does not happen. */
+    loose: [],
+    drag: null,
+    tapAdded: false,
     result: null,
     cursor: 0,
     timer: null,
@@ -438,18 +446,28 @@
 
   /* ------------------------------------------------------------ palette */
 
+  function allBlocks() { return state.program.concat(state.loose); }
+
   function usedFrom(paletteIndex) {
-    return state.program.filter(function (b) { return b.from === paletteIndex; }).length;
+    return allBlocks().filter(function (b) { return b.from === paletteIndex; }).length;
+  }
+
+  /* Where a block lives right now, whichever list that is. */
+  function findBlock(id) {
+    var i = 0;
+    for (i = 0; i < state.program.length; i++) if (state.program[i].id === id) return { list: state.program, i: i, b: state.program[i] };
+    for (i = 0; i < state.loose.length; i++) if (state.loose[i].id === id) return { list: state.loose, i: i, b: state.loose[i] };
+    return null;
   }
 
   function renderPalette() {
     var html = '';
     state.level.palette.forEach(function (p, i) {
       var left = p.count - usedFrom(i);
-      html += '<button class="pal axis-' + p.axis + '" type="button" data-pal="' + i + '"' +
-        (left <= 0 ? ' disabled' : '') + '>' +
+      html += '<div class="pal axis-' + p.axis + '"' + (left <= 0 ? ' data-spent' : '') +
+        ' data-pal="' + i + '" role="button" tabindex="0">' +
         '<span class="code">' + scratchBlock('change', p.axis, '<span class="slot"></span>') + '</span>' +
-        '<span class="count">' + left + '</span></button>';
+        '<span class="count">' + left + '</span></div>';
     });
     $('palette').innerHTML = html;
   }
@@ -460,29 +478,40 @@
    * child will meet in Scratch five minutes later, and typing -4 themselves is
    * the exercise. The -/+ keys are there for the ones who are still slow with
    * the keyboard, and they walk straight through zero into the negatives. */
-  function renderProgram() {
-    var html = '';
-    state.program.forEach(function (b, i) {
-      /* type="text" and not type="number" on purpose. A number field reports an
-       * empty value while "-4" is half typed, so the minus disappears from
-       * under the child's fingers, and its touch keypad has no minus key at
-       * all on most tablets. Text plus inputmode keeps the numeric keypad and
-       * lets the sign survive; onNumInput does the filtering. */
-      var slot = '<input class="num" type="text" inputmode="numeric" maxlength="4"' +
-        ' data-i="' + i + '" value="' + b.amount + '" aria-label="Cuántos pasos">';
-      html += '<div class="blk axis-' + b.axis + '" data-i="' + i + '">' +
-        '<span class="code">' + scratchBlock('change', b.axis, slot) + '</span>' +
-        '<button class="step" type="button" data-dial="-1" data-i="' + i + '" aria-label="Uno menos">&minus;</button>' +
-        '<button class="step" type="button" data-dial="1" data-i="' + i + '" aria-label="Uno más">+</button>' +
-        '<button class="del" type="button" data-del="' + i + '" aria-label="Sacar el bloque">&times;</button>' +
-        '</div>';
-    });
-    $('program').innerHTML = html;
-    $('program-empty').hidden = state.program.length > 0;
+
+  /* type="text" and not type="number" on purpose. A number field reports an
+   * empty value while "-4" is half typed, so the minus disappears from under
+   * the child's fingers, and its touch keypad has no minus key at all on most
+   * tablets. Text plus inputmode keeps the numeric keypad and lets the sign
+   * survive; onNumInput does the filtering. */
+  function blockHtml(b, chainIndex) {
+    var at = chainIndex == null ? '' : ' data-i="' + chainIndex + '"';
+    var slot = '<input class="num" type="text" inputmode="numeric" maxlength="4"' +
+      ' data-id="' + b.id + '"' + at + ' value="' + b.amount + '" aria-label="Cuántos pasos">';
+    return '<div class="blk axis-' + b.axis + '" data-id="' + b.id + '"' + at + '>' +
+      '<span class="code">' + scratchBlock('change', b.axis, slot) + '</span>' +
+      '<button class="step" type="button" data-dial="-1" data-id="' + b.id + '" aria-label="Uno menos">&minus;</button>' +
+      '<button class="step" type="button" data-dial="1" data-id="' + b.id + '" aria-label="Uno más">+</button>' +
+      '</div>';
   }
 
-  function numField(i) {
-    return doc.querySelector('#program .num[data-i="' + i + '"]');
+  function renderProgram() {
+    /* Only the attached chain goes in #program, and in running order: the rest
+     * of the app reads that list to light up the block it is executing. */
+    $('program').innerHTML = state.program.map(function (b, i) { return blockHtml(b, i); }).join('');
+
+    $('loose').innerHTML = state.loose.map(function (b) { return blockHtml(b, null); }).join('');
+    state.loose.forEach(function (b) {
+      var el = doc.querySelector('#loose .blk[data-id="' + b.id + '"]');
+      if (el) { el.style.left = px(b.x); el.style.top = px(b.y); }
+    });
+
+    $('program-empty').hidden = state.program.length > 0 || state.loose.length > 0;
+    global.Shapes.paintAll();
+  }
+
+  function numField(id) {
+    return doc.querySelector('.num[data-id="' + id + '"]');
   }
 
   /* ------------------------------------------------------------- running */
@@ -608,6 +637,7 @@
   function clearProgram() {
     stopTimer();
     state.program = [];
+    state.loose = [];
     compute();
     renderPalette();
     renderProgram();
@@ -621,12 +651,18 @@
     state.index = Math.max(0, Math.min(i, global.LEVELS.length - 1));
     state.level = global.LEVELS[state.index];
     state.program = [];
+    state.loose = [];
 
     var phase = global.PHASES[state.level.phase];
     $('level-title').textContent = state.level.title;
     $('level-phase').textContent = phase.name;
     $('level-phase').className = 'phase-badge is-' + phase.color;
-    $('hint').textContent = state.level.hint;
+    /* The clamp has to live on a child: #hint is a flex item of the header and
+     * flex blockifies -webkit-box straight into flow-root, which silently kills
+     * -webkit-line-clamp. The full text is still one tap away on the speaker. */
+    $('hint').innerHTML = '<span></span>';
+    $('hint').firstChild.textContent = state.level.hint;
+    $('hint').title = state.level.hint;
     $('stars-earned').innerHTML = starsHtml(saved.stars[state.level.id] || 0);
 
     renderBoard();
@@ -779,30 +815,44 @@
 
   /* -------------------------------------------------------------- wiring */
 
-  function addBlock(paletteIndex) {
+  function newBlock(paletteIndex) {
     var p = state.level.palette[paletteIndex];
-    if (usedFrom(paletteIndex) >= p.count) { toast('No te quedan más de ese bloque.'); return; }
-    stopTimer();
-    state.program.push({
+    if (usedFrom(paletteIndex) >= p.count) { toast('No te quedan más de ese bloque.'); return null; }
+    return {
       id: 'b' + (++state.seq),
       axis: p.axis,
       /* Lands as 1, never as the answer. Writing the number is the exercise. */
       amount: 1,
-      from: paletteIndex
-    });
-    global.Sound.play('place');
+      from: paletteIndex,
+      x: 0,
+      y: 0
+    };
+  }
+
+  function refresh() {
     compute();
     renderPalette();
     renderProgram();
   }
 
-  function removeBlock(i) {
+  /* Tap-to-add is still here beside the drag: on a cheap classroom tablet a tap
+   * always lands, and a child who cannot yet drag must not be locked out. */
+  function addBlock(paletteIndex) {
+    var b = newBlock(paletteIndex);
+    if (!b) return;
     stopTimer();
-    state.program.splice(i, 1);
+    state.program.push(b);
+    global.Sound.play('place');
+    refresh();
+  }
+
+  function removeBlock(id) {
+    var f = findBlock(id);
+    if (!f) return;
+    stopTimer();
+    f.list.splice(f.i, 1);
     global.Sound.play('remove');
-    compute();
-    renderPalette();
-    renderProgram();
+    refresh();
   }
 
   function clampAmount(n) {
@@ -811,34 +861,251 @@
 
   /* Only the one field is touched, never the whole list: a full re-render while
    * a child is typing steals the caret mid-number. */
-  function setAmount(i, value, writeBack) {
-    var b = state.program[i];
-    if (!b) return;
+  function setAmount(id, value, writeBack) {
+    var f = findBlock(id);
+    if (!f) return;
     stopTimer();
-    b.amount = clampAmount(value);
+    f.b.amount = clampAmount(value);
     if (writeBack) {
-      var field = numField(i);
-      if (field && field.value !== String(b.amount)) field.value = b.amount;
+      var field = numField(id);
+      if (field && field.value !== String(f.b.amount)) field.value = f.b.amount;
     }
     compute();
   }
 
-  function dialBlock(i, delta) {
-    if (!state.program[i]) return;
-    setAmount(i, state.program[i].amount + delta, true);
+  function dialBlock(id, delta) {
+    var f = findBlock(id);
+    if (!f) return;
+    setAmount(id, f.b.amount + delta, true);
     global.Sound.play('place');
   }
 
   /* An empty box or a lone minus sign is someone halfway through typing "-4".
    * It runs as zero so the board stays honest, but the sign stays on screen. */
-  function onNumInput(i, field) {
+  function onNumInput(id, field) {
     var clean = field.value.replace(/[^0-9-]/g, '').replace(/(?!^)-/g, '');
     if (clean !== field.value) field.value = clean;
     var n = parseInt(clean, 10);
-    setAmount(i, isNaN(n) ? 0 : n, false);
+    setAmount(id, isNaN(n) ? 0 : n, false);
+  }
+
+  /* ------------------------------------------------------------- dragging */
+
+  /* Free drag, the way Blockly and Scratch do it: a block can be picked up from
+   * the flyout or from the workspace, dropped anywhere, and it only joins the
+   * script when its notch comes close enough to a plug. Anything left lying
+   * around stays lying around — that idle block is a child thinking, not an
+   * error to clean up for them.
+   *
+   * A grabbed block travels alone, without the ones under it. Scratch carries
+   * the whole tail, but these programs are one to four blocks long and the
+   * exercise is moving ONE leg of the trip; carrying the tail would mean a
+   * child reaching for the first block walks off with the entire script. */
+
+  var SNAP = 40;      /* how close the notch has to get to a plug */
+  var GRABBED = 5;    /* past this many px it is a drag, under it a tap */
+
+  function slotPoints() {
+    /* One plug under the hat, then one under every block already in the chain. */
+    var box = $('program').getBoundingClientRect();
+    var pts = [];
+    for (var i = 0; i <= state.program.length; i++) {
+      pts.push({ index: i, x: box.left + global.Shapes.plugX(), y: box.top + i * global.Shapes.BODY });
+    }
+    return pts;
+  }
+
+  function nearestSlot(el) {
+    var box = el.getBoundingClientRect();
+    var nx = box.left + global.Shapes.plugX();
+    var ny = box.top;
+    var best = null;
+    slotPoints().forEach(function (s) {
+      var d = Math.hypot(s.x - nx, s.y - ny);
+      if (d < SNAP && (!best || d < best.d)) best = { index: s.index, d: d };
+    });
+    return best ? best.index : null;
+  }
+
+  function showMarker(index) {
+    var prog = $('program');
+    var mark = doc.getElementById('drop-marker');
+    if (index == null) { if (mark) mark.remove(); return; }
+    if (!mark) {
+      mark = doc.createElement('div');
+      mark.id = 'drop-marker';
+      mark.setAttribute('aria-hidden', 'true');
+    }
+    /* Out first: while it is in there it counts as a child and shifts every
+     * index by one. */
+    if (mark.parentNode) mark.remove();
+    var at = prog.children[index];
+    if (at) prog.insertBefore(mark, at);
+    else prog.appendChild(mark);
+  }
+
+  function inside(el, cx, cy) {
+    if (!el) return false;
+    var r = el.getBoundingClientRect();
+    return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+  }
+
+  /* `rect` is measured by the caller, before any re-render: a node that has
+   * already been replaced reports all zeros and the block flies off screen. */
+  function startDrag(e, block, rect) {
+    var layer = $('drag-layer');
+    layer.innerHTML = blockHtml(block, null);
+    var el = layer.firstChild;
+    el.classList.add('is-dragging');
+    global.Shapes.paint(el, 'stack');
+
+    state.drag = {
+      block: block,
+      el: el,
+      /* Keep the block under the same spot of the finger that grabbed it. */
+      dx: e.clientX - rect.left,
+      dy: e.clientY - rect.top,
+      x0: e.clientX,
+      y0: e.clientY,
+      moved: false,
+      slot: null,
+      /* Filled in by onPointerDown: a tap has to put the block back exactly
+       * where it came from, not send it to the end of the script. */
+      origin: null
+    };
+    moveDrag(e);
+    doc.body.classList.add('is-dragging-block');
+    global.Sound.play('place');
+  }
+
+  function moveDrag(e) {
+    var d = state.drag;
+    if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > GRABBED) d.moved = true;
+    d.el.style.left = px(e.clientX - d.dx);
+    d.el.style.top = px(e.clientY - d.dy);
+
+    d.slot = d.moved ? nearestSlot(d.el) : null;
+    d.el.classList.toggle('will-snap', d.slot != null);
+    showMarker(d.slot);
+
+    var bin = inside($('btn-clear'), e.clientX, e.clientY) || inside($('palette-col'), e.clientX, e.clientY);
+    d.el.classList.toggle('will-drop', bin);
+    $('btn-clear').classList.toggle('is-hot', bin);
+  }
+
+  function endDrag(e) {
+    var d = state.drag;
+    if (!d) return;
+    /* Measured before the drag layer is emptied out from under it. */
+    var w = d.el.offsetWidth;
+    state.drag = null;
+    showMarker(null);
+    $('drag-layer').innerHTML = '';
+    doc.body.classList.remove('is-dragging-block');
+    $('btn-clear').classList.remove('is-hot');
+    stopTimer();
+
+    /* Never moved: this was a tap, not a drag. From the flyout that means
+     * "give me one" and it goes to the end of the script. From the workspace it
+     * means nothing at all, so the block goes back where it was standing — a
+     * child who pokes the middle block must not watch it jump to the bottom. */
+    if (!d.moved) {
+      var o = d.origin;
+      if (o.where === 'palette') { state.program.push(d.block); state.tapAdded = true; global.Sound.play('place'); }
+      else if (o.where === 'chain') state.program.splice(o.index, 0, d.block);
+      else state.loose.push(d.block);
+      refresh();
+      return;
+    }
+
+    /* Back to the flyout or into the bin: the block is gone and its budget
+     * comes back, which is how a child undoes a block without a delete key. */
+    if (inside($('btn-clear'), e.clientX, e.clientY) || inside($('palette-col'), e.clientX, e.clientY)) {
+      global.Sound.play('remove');
+      refresh();
+      return;
+    }
+
+    if (d.slot != null) {
+      state.program.splice(d.slot, 0, d.block);
+      global.Sound.play('place');
+      refresh();
+      return;
+    }
+
+    var scroll = $('flow-scroll');
+    var box = scroll.getBoundingClientRect();
+    if (inside(scroll, e.clientX, e.clientY)) {
+      /* Kept whole inside the workspace. A block half off the edge is a block
+       * a child cannot grab again, and there is no scrollbar to go find it. */
+      var maxX = Math.max(0, scroll.clientWidth - w);
+      var maxY = Math.max(0, scroll.clientHeight - global.Shapes.BODY - global.Shapes.NOTCH_D);
+      d.block.x = Math.max(0, Math.min(maxX, e.clientX - d.dx - box.left + scroll.scrollLeft));
+      d.block.y = Math.max(0, Math.min(maxY, e.clientY - d.dy - box.top + scroll.scrollTop));
+      state.loose.push(d.block);
+      global.Sound.play('place');
+      refresh();
+      return;
+    }
+
+    /* Dropped off the map entirely — put it back where it was reachable. */
+    global.Sound.play('remove');
+    refresh();
+  }
+
+  function onPointerDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    /* The number box and its -/+ keys are controls, not handles. */
+    if (e.target.closest('.num, .step')) return;
+
+    var pal = e.target.closest('[data-pal]');
+    var blk = e.target.closest('.blk');
+    var block = null;
+    var rect = null;
+
+    var origin = null;
+
+    if (pal) {
+      if (pal.hasAttribute('data-spent')) { toast('No te quedan más de ese bloque.'); return; }
+      block = newBlock(Number(pal.dataset.pal));
+      rect = pal.getBoundingClientRect();
+      origin = { where: 'palette' };
+    } else if (blk) {
+      var f = findBlock(blk.dataset.id);
+      if (!f) return;
+      rect = blk.getBoundingClientRect();
+      origin = { where: f.list === state.program ? 'chain' : 'loose', index: f.i };
+      f.list.splice(f.i, 1);
+      block = f.b;
+      /* Take it out of the script right away so the blocks under it close the
+       * gap while the child is still holding it. That is the feedback that
+       * says "this one is in your hand now". */
+      compute();
+      renderProgram();
+    }
+    if (!block) return;
+
+    e.preventDefault();
+    /* A pointer tap is followed by a click. Clear the marker now so a click
+     * arriving from anywhere else is never mistaken for that one. */
+    state.tapAdded = false;
+    startDrag(e, block, rect);
+    state.drag.origin = origin;
+    doc.addEventListener('pointermove', moveDrag);
+    doc.addEventListener('pointerup', onPointerUp);
+    doc.addEventListener('pointercancel', onPointerUp);
+  }
+
+  function onPointerUp(e) {
+    doc.removeEventListener('pointermove', moveDrag);
+    doc.removeEventListener('pointerup', onPointerUp);
+    doc.removeEventListener('pointercancel', onPointerUp);
+    endDrag(e);
   }
 
   function onResize() {
+    global.Shapes.paintAll();
     if (!state.level) return;
     var board = $('board');
     board.classList.add('no-anim');
@@ -849,32 +1116,49 @@
   }
 
   function wire() {
-    $('palette').addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-pal]');
-      if (btn && !btn.disabled) addBlock(Number(btn.dataset.pal));
+    /* One surface for the flyout and the workspace both, because a block
+     * behaves the same wherever it is standing. */
+    ['palette', 'flow-area'].forEach(function (id) {
+      $(id).addEventListener('pointerdown', onPointerDown);
     });
 
-    $('program').addEventListener('click', function (e) {
+    /* Assistive tech activates a control with a plain click and never sends a
+     * pointer at all, so the flyout has to answer that too. A finger tap fires
+     * both, and tapAdded is how the second one knows it already happened. */
+    $('palette').addEventListener('click', function (e) {
+      var pal = e.target.closest('[data-pal]');
+      if (!pal) return;
+      if (state.tapAdded) { state.tapAdded = false; return; }
+      addBlock(Number(pal.dataset.pal));
+    });
+
+    /* The keyboard route for the same thing, so the flyout is not drag-only. */
+    $('palette').addEventListener('keydown', function (e) {
+      var pal = e.target.closest('[data-pal]');
+      if (!pal || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      addBlock(Number(pal.dataset.pal));
+    });
+
+    $('flow-area').addEventListener('click', function (e) {
       var dial = e.target.closest('[data-dial]');
-      if (dial) { dialBlock(Number(dial.dataset.i), Number(dial.dataset.dial)); return; }
-      var del = e.target.closest('[data-del]');
-      if (del) removeBlock(Number(del.dataset.del));
+      if (dial) dialBlock(dial.dataset.id, Number(dial.dataset.dial));
       /* Tapping the block body does nothing on purpose: the number field is
        * right there and a stray tap must not wipe what they just typed. */
     });
 
-    $('program').addEventListener('input', function (e) {
+    $('flow-area').addEventListener('input', function (e) {
       var field = e.target.closest('.num');
-      if (field) onNumInput(Number(field.dataset.i), field);
+      if (field) onNumInput(field.dataset.id, field);
     });
 
     /* Leaving the box empty would otherwise keep showing nothing while the
      * board already moved zero steps. On the way out, show what actually ran. */
-    $('program').addEventListener('focusout', function (e) {
+    $('flow-area').addEventListener('focusout', function (e) {
       var field = e.target.closest('.num');
       if (!field) return;
-      var b = state.program[Number(field.dataset.i)];
-      if (b) field.value = b.amount;
+      var f = findBlock(field.dataset.id);
+      if (f) field.value = f.b.amount;
     });
 
     $('btn-play').addEventListener('click', play);
@@ -935,6 +1219,7 @@
     loadLevel: loadLevel,
     addBlock: addBlock,
     dialBlock: dialBlock,
+    findBlock: findBlock,
     play: play,
     stepOnce: stepOnce,
     translate: translate,

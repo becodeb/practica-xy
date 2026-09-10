@@ -6,7 +6,7 @@
 <title>El Operador de Grúa</title>
 <link rel="stylesheet" href="css/styles.css">
 </head>
-<body>
+<body class="ui-v2">
 
 <div id="app">
 
@@ -16,48 +16,57 @@
       <span id="level-phase" class="phase-badge"></span>
       <h1 id="level-title">El Operador de Grúa</h1>
     </div>
+    <p id="hint" class="hint"></p>
     <div id="stars-earned" class="stars" aria-label="Estrellas del nivel"></div>
     <button id="btn-translate" class="chip" type="button" title="Traductora de Scratch" aria-label="Traductora de Scratch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M8.5 4v3M6 15c3-1 5-4 5.5-8"/><path d="M6.5 10c1.5 3 3.5 4.5 6 5.5"/><path d="M13 20l4-9 4 9M14.6 17h4.8"/></svg></button>
     <button id="btn-speak" class="chip" type="button" title="Escuchar la consigna" aria-label="Escuchar la consigna"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M17 8.5a5 5 0 0 1 0 7"/><path d="M20 6a9 9 0 0 1 0 12"/></svg></button>
     <button id="btn-sound" class="chip is-on" type="button" title="Sonido" aria-label="Sonido"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6 10a6 6 0 1 1 12 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></button>
   </header>
 
-  <p id="hint" class="hint"></p>
-
   <main id="stage">
 
-    <section id="left-col">
+    <!-- The flyout, where every block is born. -->
+    <section id="palette-col" aria-label="Bloques">
+      <h2 class="col-title">Bloques</h2>
+      <section id="palette"></section>
+    </section>
+
+    <!-- The workspace: the hat, the script under it, and anything left lying around. -->
+    <section id="flow-area" aria-label="Tu programa">
+      <div id="flow-scroll">
+        <div id="script">
+          <div id="hat" class="hat"><span class="code">al ejecutar</span></div>
+          <div id="program"></div>
+        </div>
+        <div id="loose"></div>
+        <p id="program-empty" class="program-empty">Arrastrá un bloque y encajalo debajo de <b>al ejecutar</b>.</p>
+      </div>
+      <button id="btn-clear" class="bin" type="button" title="Tirar todos los bloques" aria-label="Tirar todos los bloques"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg></button>
+    </section>
+
+    <!-- The warehouse, with Run underneath it. -->
+    <section id="game-col">
       <div id="board-wrap">
         <div id="board" role="img" aria-label="El depósito"></div>
         <div id="readout" class="readout" aria-live="polite"></div>
       </div>
-
-      <section id="palette" aria-label="Bloques disponibles"></section>
-
       <section id="controls">
         <button id="btn-play" class="ctrl ctrl-play" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg><span class="label">Jugar</span></button>
         <button id="btn-step" class="ctrl" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h11"/><path d="M13 8l4 4-4 4"/></svg> Un pasito</button>
         <button id="btn-reset" class="ctrl" type="button" title="Volver al principio" aria-label="Volver al principio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 3v5h-5"/></svg></button>
-        <button id="btn-clear" class="ctrl ctrl-danger" type="button" title="Sacar todos los bloques" aria-label="Sacar todos los bloques"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg></button>
       </section>
-    </section>
-
-    <section id="flow-area" aria-label="El programa">
-      <h2 class="flow-title">Tu programa</h2>
-      <div id="flow-scroll">
-        <div id="program"></div>
-        <p id="program-empty" class="program-empty">Tocá un bloque de color para empezar.<br>Después, escribí cuántos pasos querés avanzar.</p>
-      </div>
     </section>
 
   </main>
 
 </div>
 
+<div id="drag-layer" aria-hidden="true"></div>
 <div id="overlay" class="overlay" hidden></div>
 <div id="toast" class="toast" hidden></div>
 
 <script src="js/audio.js"></script>
+<script src="js/shapes.js"></script>
 <script src="js/levels.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/app.js"></script>

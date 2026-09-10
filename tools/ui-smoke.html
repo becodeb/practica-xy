@@ -123,13 +123,15 @@ async function run() {
   is('el bloque de la paleta no dice ningún número',
     q('#palette .code').textContent.replace(/\s+/g, ' ').trim(), 'cambiar x en');
   truthy('la paleta tiene la ranura vacía de Scratch', !!q('#palette .slot'), 'no hay .slot');
-  truthy('no hay flechas en la paleta', all('#palette .pal svg').length === 0,
-    'svgs: ' + all('#palette .pal svg').length);
+  /* The block outline is an svg now, so the check has to look past it: what
+     must not exist is an arrow button inside the block. */
+  truthy('no hay flechas en la paleta', all('#palette .pal .code svg').length === 0,
+    'svgs: ' + all('#palette .pal .code svg').length);
 
   click('[data-pal="0"]');
   is('se agregó un bloque', all('#program .blk').length, 1);
-  truthy('no hay flechas en el bloque', all('#program .blk svg').length === 0,
-    'svgs: ' + all('#program .blk svg').length);
+  truthy('no hay flechas en el bloque', all('#program .blk .code svg').length === 0,
+    'svgs: ' + all('#program .blk .code svg').length);
   is('el bloque nace en 1, no con la respuesta', numOf(0), '1');
   is('el texto del bloque es el de Scratch',
     q('#program .code').textContent.replace(/\s+/g, ' ').trim(), 'cambiar x en');
